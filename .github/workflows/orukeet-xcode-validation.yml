@@ -1,0 +1,34 @@
+name: Orukeet Xcode validation
+on:
+  push:
+    branches: [codex/orukeet-xcode-validation]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 4e2a99e6af915e7109222b07f040768ee0e6ed74
+      - name: Record exact source and toolchain
+        run: |
+          mkdir -p artifacts
+          git rev-parse HEAD | tee artifacts/source-head.txt
+          xcodebuild -version | tee artifacts/xcode-version.txt
+          swift --version | tee artifacts/swift-version.txt
+      - name: Build complete app from PR head
+        run: |
+          set -o pipefail
+          xcodebuild build -project VoiceInk.xcodeproj -scheme VoiceInk -configuration Debug -destination "platform=macOS,arch=arm64" -derivedDataPath "$RUNNER_TEMP/DerivedData" -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/xcode-build.log
+      - name: Archive actual app for local GUI validation
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/DerivedData/Build/Products/Debug/VoiceInk.app" "artifacts/VoiceInk.zip"
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceInk-orukeet-xcode-validation
+          path: artifacts/
+          retention-days: 14
