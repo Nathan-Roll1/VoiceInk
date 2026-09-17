@@ -18,6 +18,31 @@ jobs:
           git rev-parse HEAD | tee artifacts/source-head.txt
           xcodebuild -version | tee artifacts/xcode-version.txt
           swift --version | tee artifacts/swift-version.txt
+      - name: Prepare the required official Whisper framework for macOS
+        run: |
+          set -euo pipefail
+          whisper_dir="$HOME/VoiceInk-Dependencies/whisper.cpp"
+          git init "$whisper_dir"
+          git -C "$whisper_dir" remote add origin https://github.com/ggml-org/whisper.cpp.git
+          git -C "$whisper_dir" fetch --depth 1 origin da54572229bcf64ba367d96c7ef15770376c4280
+          git -C "$whisper_dir" checkout FETCH_HEAD
+          git -C "$whisper_dir" rev-parse HEAD > artifacts/whisper-revision.txt
+          cd "$whisper_dir"
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("build-xcframework.sh").read_text()
+          definitions = source[:source.index('echo "Building for iOS simulator..."')]
+          macos = source[source.index('echo "Building for macOS..."'):source.index('echo "Building for visionOS..."')]
+          macos = macos.replace('"arm64;x86_64"', '"arm64"')
+          finish = '''
+          setup_framework_structure "build-macos" ${MACOS_MIN_OS_VERSION} "macos"
+          combine_static_libraries "build-macos" "Release" "macos" "false"
+          xcodebuild -create-xcframework -framework "$(pwd)/build-macos/framework/whisper.framework" -debug-symbols "$(pwd)/build-macos/dSYMs/whisper.dSYM" -output "$(pwd)/build-apple/whisper.xcframework"
+          '''
+          Path("build-macos-only.sh").write_text(definitions + macos + finish)
+          PY
+          cp build-macos-only.sh "$GITHUB_WORKSPACE/artifacts/"
+          bash build-macos-only.sh 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/whisper-build.log"
       # Reviewed pinned MLX plugin and expression macros for noninteractive CI.
       # CudaBuild returns no commands on macOS; MLXHuggingFaceMacros only expands Swift source.
       - name: Build complete app from PR head
@@ -26,7 +51,7 @@ jobs:
           xcodebuild build -skipPackagePluginValidation -skipMacroValidation -project VoiceInk.xcodeproj -scheme VoiceInk -configuration Debug -destination "platform=macOS,arch=arm64" -derivedDataPath "$RUNNER_TEMP/DerivedData" -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/xcode-build.log
       - name: Archive actual app for local GUI validation
         run: |
-          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/DerivedData/Build/Products/Debug/VoiceInk.app" "artifacts/VoiceInk.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/DerivedData/Build/Products/Debug/VoiceInk Dev.app" "artifacts/VoiceInk.zip"
       - name: Upload build evidence
         if: always()
         uses: actions/upload-artifact@v4
