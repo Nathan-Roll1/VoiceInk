@@ -18,11 +18,12 @@ jobs:
           git rev-parse HEAD | tee artifacts/source-head.txt
           xcodebuild -version | tee artifacts/xcode-version.txt
           swift --version | tee artifacts/swift-version.txt
-      # Reviewed mlx-swift 0.31.6 CudaBuild: returns no build commands on macOS.
+      # Reviewed pinned MLX plugin and expression macros for noninteractive CI.
+      # CudaBuild returns no commands on macOS; MLXHuggingFaceMacros only expands Swift source.
       - name: Build complete app from PR head
         run: |
           set -o pipefail
-          xcodebuild build -skipPackagePluginValidation -project VoiceInk.xcodeproj -scheme VoiceInk -configuration Debug -destination "platform=macOS,arch=arm64" -derivedDataPath "$RUNNER_TEMP/DerivedData" -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/xcode-build.log
+          xcodebuild build -skipPackagePluginValidation -skipMacroValidation -project VoiceInk.xcodeproj -scheme VoiceInk -configuration Debug -destination "platform=macOS,arch=arm64" -derivedDataPath "$RUNNER_TEMP/DerivedData" -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/xcode-build.log
       - name: Archive actual app for local GUI validation
         run: |
           ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/DerivedData/Build/Products/Debug/VoiceInk.app" "artifacts/VoiceInk.zip"
